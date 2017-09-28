@@ -622,7 +622,9 @@ class ModReader:
         return self.unpack('I', 4)[0]
 
     def unpackRecHeader(self):
-        """Unpack a record header."""
+        """Unpack a record header.
+        uint3 Has Form Version
+        """
         (type, size, uint0, uint1, uint2, uint3) = self.unpack('4s5I',
             recHeaderSize, 'REC_HEAD')
         # --Bad?
@@ -1882,8 +1884,8 @@ class MreRecord(object):
     simpleTypes = None
 
     def __init__(self, header, ins=None, unpack=False):
-        (self.recType, self.size, flags1, self.fid, self.flags2,
-        self.flags3) = header
+        """ self.flags3 has Form Version """
+        (self.recType, self.size, flags1, self.fid, self.flags2, self.flags3) = header
         self.flags1 = MreRecord._flags1(flags1)
         self.longFids = False  # --False: Short (numeric); True: Long (espname,objectindex)
         self.changed = False
@@ -1901,10 +1903,11 @@ class MreRecord(object):
         `type(self)`.split("'")[1], self.recType, strFid(self.fid), eid)
 
     def getHeader(self):
-        """Returns header tuple."""
+        """Returns header tuple.
+        self.flags3 Has Form Version
+        """
         return (
-        self.recType, self.size, int(self.flags1), self.fid, self.flags2,
-        self.flags3)
+        self.recType, self.size, int(self.flags1), self.fid, self.flags2, self.flags3)
 
     def getBaseCopy(self):
         """Returns an MreRecord version of self."""
@@ -2042,12 +2045,21 @@ class MreRecord(object):
         for subrecord in self.subrecords:
             subrecord.dump(out)
 
+    @staticmethod
+    def set_form_version(flags3):
+        """ Set form Version to 15 """
+        flags3_1, flags3_2 = struct.unpack('=2h', struct.pack('=I', flags3))
+        flags3_1 = 15
+        new_flags3 = struct.unpack('=I', struct.pack('=2h', flags3_1, flags3_2))[0]
+        return new_flags3
+
     def dump(self, out):
         """Dumps all data to output stream."""
         if self.changed: raise StateError(_('Data changed: ') + self.recType)
         if not self.data and not self.flags1.deleted and self.size > 0:
-            raise StateError(
-                _('Data undefined: ') + self.recType + ' ' + hex(self.fid))
+            raise StateError(_('Data undefined: ') + self.recType + ' ' + hex(self.fid))
+        if self.recType != 'GRUP':
+            self.flags3 = MreRecord.set_form_version(self.flags3)
         out.write(
             struct.pack('=4s5I', self.recType, self.size, int(self.flags1),
                 self.fid, self.flags2, self.flags3))
